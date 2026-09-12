@@ -1,0 +1,7 @@
+streamlit>=1.37
+pandas>=2.2
+numpy>=1.26
+requests>=2.32
+SQLAlchemy>=2.0
+plotly>=5.22
+python-dotenv>=1.0
