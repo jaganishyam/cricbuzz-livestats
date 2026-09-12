@@ -5,18 +5,19 @@
 # nav and it's how i've seen most of these dashboards done.
 #
 # run with: streamlit run app.py
- 
+
 import streamlit as st
- 
+
 from db_helper import db_ready, current_engine_name
 from api_helper import has_key
 import live_matches
 import player_stats
 import sql_analytics
+import visualizations
 import crud_ops
- 
+
 st.set_page_config(page_title="Cricbuzz LiveStats", page_icon="🏏", layout="wide")
- 
+
 # ---- theme -------------------------------------------------------------
 # dark dashboard look now instead of the bright green pitch version -
 # dark navy/charcoal base (set in .streamlit/config.toml, base="dark"),
@@ -29,9 +30,9 @@ st.markdown("""
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
 <style>
     html, body { font-family: 'Inter', sans-serif; }
- 
+
     .stApp { background-color: #0B0F14; }
- 
+
     /* ---- sidebar ---- */
     section[data-testid="stSidebar"] {
         background-color: #10151D;
@@ -46,7 +47,7 @@ st.markdown("""
         margin-bottom: 10px;
     }
     section[data-testid="stSidebar"] hr { border-color: #212836; }
- 
+
     /* nav items as flat pill rows, active one picked out in green */
     section[data-testid="stSidebar"] div[role="radiogroup"] label {
         background: #141A23;
@@ -61,7 +62,7 @@ st.markdown("""
         border-color: #22C55E;
         background: #182018;
     }
- 
+
     /* ---- top project banner: flat dark card, not a loud gradient ---- */
     .project-banner {
         background: #141A23;
@@ -82,11 +83,11 @@ st.markdown("""
         margin: 6px 0 0 0;
         font-size: 1rem;
     }
- 
+
     /* ---- headings ---- */
     h1, h2, h3, h4 { color: #F3F4F6; font-weight: 700; }
     p, li, span, label { color: #C9CDD3; }
- 
+
     /* ---- buttons: flat pill, green primary accent ---- */
     div.stButton > button, div.stFormSubmitButton > button, div.stDownloadButton > button {
         background: #22C55E;
@@ -101,7 +102,7 @@ st.markdown("""
         background: #16A34A;
         color: #0B0F14;
     }
- 
+
     /* ---- metric tiles: uppercase micro-label + big bold number ---- */
     div[data-testid="stMetric"] {
         background: #141A23;
@@ -116,7 +117,7 @@ st.markdown("""
         font-size: 0.75rem;
         color: #9CA3AF !important;
     }
- 
+
     /* ---- tabs: green underline on the active tab, like a lot of
        modern dashboards do it ---- */
     .stTabs [data-baseweb="tab-list"] { gap: 6px; border-bottom: 1px solid #212836; }
@@ -125,7 +126,7 @@ st.markdown("""
         color: #22C55E !important;
         border-bottom: 3px solid #22C55E !important;
     }
- 
+
     /* ---- cards for dataframes / expanders / containers ---- */
     div[data-testid="stDataFrame"] {
         border: 1px solid #212836;
@@ -141,10 +142,10 @@ st.markdown("""
         border-color: #212836 !important;
         background: #141A23;
     }
- 
+
     /* ---- alert boxes a touch more muted to match the dark card look ---- */
     div[data-testid="stAlert"] { border-radius: 10px; }
- 
+
     /* ---- a little "chip" used on the home page feature row ---- */
     .feature-chip {
         display: inline-flex;
@@ -161,22 +162,23 @@ st.markdown("""
     .dot { height: 8px; width: 8px; border-radius: 50%; display: inline-block; }
 </style>
 """, unsafe_allow_html=True)
- 
+
 st.markdown("""
 <div class="project-banner">
 <h1>🏏 Cricbuzz LiveStats</h1>
 <p>Real-Time Cricket Insights &amp; SQL-Based Analytics</p>
 </div>
 """, unsafe_allow_html=True)
- 
+
 PAGES = {
     "🏠 Home": None,
     "🔴 Live Matches": live_matches,
     "📊 Top Player Stats": player_stats,
     "🧮 SQL Queries & Analytics": sql_analytics,
+    "📈 Visualizations": visualizations,
     "⚙️ CRUD Operations": crud_ops,
 }
- 
+
 with st.sidebar:
     st.markdown("### Navigation")
     choice = st.radio("go to", list(PAGES.keys()), label_visibility="collapsed")
@@ -185,7 +187,7 @@ with st.sidebar:
     st.write("DB:", "✅ ready" if db_ready() else "❌ not seeded")
     st.write("Engine:", current_engine_name())
     st.write("API key:", "✅ set" if has_key() else "❌ not set")
- 
+
 if choice == "🏠 Home":
     st.subheader("About this project")
     st.markdown(
@@ -197,7 +199,7 @@ if choice == "🏠 Home":
         "generated database of ~450 matches so there's always real data to query, even without "
         "an API key; and the CRUD page demonstrates basic data management on top of it all."
     )
- 
+
     st.markdown(
         '<span class="feature-chip"><span class="dot" style="background:#EF4444"></span>Live scores via REST API</span>'
         '<span class="feature-chip"><span class="dot" style="background:#22C55E"></span>25 SQL practice queries</span>'
@@ -205,9 +207,9 @@ if choice == "🏠 Home":
         '<span class="feature-chip"><span class="dot" style="background:#38BDF8"></span>SQLite / Postgres / MySQL</span>',
         unsafe_allow_html=True,
     )
- 
+
     col1, col2 = st.columns([2, 1])
- 
+
     with col1:
         st.subheader("What's in here")
         st.markdown("""
@@ -216,11 +218,12 @@ if choice == "🏠 Home":
         | 🔴 Live Matches | Live/recent matches from the Cricbuzz API |
         | 📊 Top Player Stats | Run/wicket leaderboards |
         | 🧮 SQL Queries & Analytics | The 25 practice queries from the brief, run live against the db |
+        | 📈 Visualizations | KPI tiles + team/player/format charts for a quick presentation view |
         | ⚙️ CRUD Operations | Add / edit / delete players and matches |
         """)
         st.subheader("Stack")
         st.write("Python, Streamlit, SQL (SQLite/Postgres/MySQL), Cricbuzz REST API, pandas, SQLAlchemy, Plotly")
- 
+
     with col2:
         st.subheader("Status")
         if db_ready():
@@ -228,7 +231,7 @@ if choice == "🏠 Home":
         else:
             st.error("Database not seeded yet.")
             st.code("python generate_data.py", language="bash")
- 
+
         if has_key():
             st.success("Cricbuzz API key found.")
         else:
@@ -239,17 +242,20 @@ if choice == "🏠 Home":
                 "Drop it in `.env` as CRICBUZZ_API_KEY, or in `.streamlit/secrets.toml`. "
                 "Everything else works fine without it."
             )
- 
+
     st.info("Use the sidebar to jump between pages.")
- 
+
 elif choice == "🔴 Live Matches":
     live_matches.render()
- 
+
 elif choice == "📊 Top Player Stats":
     player_stats.render()
- 
+
 elif choice == "🧮 SQL Queries & Analytics":
     sql_analytics.render()
- 
+
+elif choice == "📈 Visualizations":
+    visualizations.render()
+
 elif choice == "⚙️ CRUD Operations":
     crud_ops.render()
