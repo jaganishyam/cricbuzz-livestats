@@ -52,6 +52,29 @@ def _label_columns(headers, n_cols):
     return cleaned
  
  
+def _prepare_table(headers, rows):
+    # found the actual cause of the header/data mismatch: for some stat
+    # categories cricbuzz tucks an internal player id onto the FRONT of
+    # each row's value list, and that id isn't described anywhere in the
+    # headers array - so the row ends up one item longer than the header
+    # list. lining them up left-to-right (what we did before) shoves
+    # every real stat one column to the right: "Batter" showed the id,
+    # "M" showed the player's name, and so on down the row.
+    #
+    # the id itself isn't something worth showing in a leaderboard, so
+    # when we see that off-by-one we just drop it and label what's left
+    # from cricbuzz's own headers - no more guessing at the end.
+    if not rows:
+        return rows, _label_columns(headers, 0)
+ 
+    n_cols = len(rows[0])
+    if headers and n_cols == len(headers) + 1:
+        rows = [list(r)[1:] for r in rows]
+        n_cols -= 1
+ 
+    return rows, _label_columns(headers, n_cols)
+ 
+ 
 def render():
     st.header("📊 Top Player Stats")
  
@@ -64,8 +87,8 @@ def render():
             return
  
         rows = [v.get("values", v) if isinstance(v, dict) else v for v in values]
-        n_cols = len(rows[0]) if rows else 0
-        df = pd.DataFrame(rows, columns=_label_columns(headers, n_cols))
+        rows, columns = _prepare_table(headers, rows)
+        df = pd.DataFrame(rows, columns=columns)
         st.caption(f"{len(df)} players - columns come straight from Cricbuzz for this category, "
                    f"so batting categories won't drag in bowling fields and vice versa.")
         st.dataframe(df, use_container_width=True, hide_index=True)
