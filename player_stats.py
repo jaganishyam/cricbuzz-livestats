@@ -1,16 +1,16 @@
 # player_stats.py - "Top Player Stats Page".
 # uses the live api when we have a key, otherwise falls back to the
 # sample db so the page isn't just a blank error message.
-
+ 
 import pandas as pd
 import plotly.express as px
 import streamlit as st
-
+ 
 from api_helper import fetch_top_stats, has_key
 from db_helper import run_query, db_ready
-
+ 
 CRICKET_COLORS = ["#1B5E20", "#C8102E", "#F9A825", "#2E7D32", "#8D6E63", "#546E7A"]
-
+ 
 STAT_TYPES = {
     "mostRuns": "Most Runs",
     "mostWickets": "Most Wickets",
@@ -18,28 +18,43 @@ STAT_TYPES = {
     "bestBowling": "Best Bowling Figures",
     "mostSixes": "Most Sixes",
 }
-
-
+ 
+ 
 def _label_columns(headers, n_cols):
     # cricbuzz sends its own column headers (e.g. Player, Matches, Runs,
     # Avg) which is exactly what we want to show - the bug before was we
     # were just throwing them away and letting streamlit number the
-    # columns 0,1,2... this rebuilds a clean column list and falls back
-    # to something sane if the api ever sends a mismatched header count.
-    if not headers or len(headers) != n_cols:
-        return [f"Stat {i+1}" if i else "Rank" for i in range(n_cols)]
+    # columns 0,1,2... this rebuilds a clean column list.
+    #
+    # first pass just fell back to generic "Stat N" labels for ALL columns
+    # whenever the header count didn't match exactly, which throws away
+    # good headers over one extra/missing field. this version keeps
+    # whatever headers it does have and only pads/trims the difference,
+    # so a near-match still shows mostly real names.
+    headers = list(headers) if headers else []
     cleaned = []
-    for i, h in enumerate(headers):
-        h = (h or "").strip()
+    for i in range(n_cols):
+        if i < len(headers):
+            h = (headers[i] or "").strip()
+        else:
+            h = ""
         if not h:
-            h = "Rank" if i == 0 else f"Stat {i+1}"
+            h = "Rank" if i == 0 else f"Stat {i + 1}"
         cleaned.append(h)
+ 
+    # guard against duplicate labels (pandas is picky about that) - e.g.
+    # two blank headers would otherwise both become "Stat 3"
+    seen = {}
+    for i, h in enumerate(cleaned):
+        seen[h] = seen.get(h, 0) + 1
+        if seen[h] > 1:
+            cleaned[i] = f"{h} ({seen[h]})"
     return cleaned
-
-
+ 
+ 
 def render():
     st.header("📊 Top Player Stats")
-
+ 
     if has_key():
         st.caption("Live leaderboard from the Cricbuzz API.")
         stat_type = st.selectbox("Category", list(STAT_TYPES), format_func=lambda k: STAT_TYPES[k])
@@ -47,7 +62,7 @@ def render():
         if not values:
             st.info("No data came back for this category.")
             return
-
+ 
         rows = [v.get("values", v) if isinstance(v, dict) else v for v in values]
         n_cols = len(rows[0]) if rows else 0
         df = pd.DataFrame(rows, columns=_label_columns(headers, n_cols))
@@ -55,19 +70,19 @@ def render():
                    f"so batting categories won't drag in bowling fields and vice versa.")
         st.dataframe(df, use_container_width=True, hide_index=True)
         return
-
+ 
     st.warning(
         "No API key set, so these leaderboards are computed from the sample "
         "database instead of live Cricbuzz data. Add CRICBUZZ_API_KEY to switch "
         "over (see Home page)."
     )
-
+ 
     if not db_ready():
         st.error("Database isn't seeded - run `python generate_data.py` first.")
         return
-
+ 
     tab1, tab2, tab3 = st.tabs(["Most Runs", "Most Wickets", "Best Strike Rate"])
-
+ 
     with tab1:
         fmt = st.selectbox("Format", ["Test", "ODI", "T20I"], key="runs_fmt")
         df = run_query("""
@@ -85,7 +100,7 @@ def render():
         fig = px.bar(df.sort_values("total_runs"), x="total_runs", y="player", orientation="h",
                      color_discrete_sequence=CRICKET_COLORS, title=f"Top run scorers - {fmt}")
         st.plotly_chart(fig, use_container_width=True)
-
+ 
     with tab2:
         fmt = st.selectbox("Format", ["Test", "ODI", "T20I"], key="wkt_fmt")
         df = run_query("""
@@ -103,7 +118,7 @@ def render():
         fig = px.bar(df.sort_values("total_wickets"), x="total_wickets", y="player", orientation="h",
                      color_discrete_sequence=CRICKET_COLORS, title=f"Top wicket takers - {fmt}")
         st.plotly_chart(fig, use_container_width=True)
-
+ 
     with tab3:
         fmt = st.selectbox("Format", ["Test", "ODI", "T20I"], key="sr_fmt")
         df = run_query("""
