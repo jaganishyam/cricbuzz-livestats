@@ -12,6 +12,7 @@ from pathlib import Path
 import pandas as pd
 import streamlit as st
 from sqlalchemy import create_engine, text
+from sqlalchemy.exc import OperationalError
  
 try:
     from dotenv import load_dotenv
@@ -27,36 +28,51 @@ def _is_writable(path: Path) -> bool:
     # streamlit community cloud checks the repo out onto a filesystem
     # that isn't writable in place - reads work fine, but any INSERT /
     # UPDATE / DELETE against a sqlite file sitting inside the repo
-    # folder blows up with "attempt to write a readonly database", even
-    # though the same file opens fine for querying. this probes for that
-    # instead of assuming the repo folder is always writable (it is
-    # locally, which is why this never showed up in testing).
+    # folder blows up with "attempt to write a readonly database". turns
+    # out just *opening* the existing db file in r+b mode isn't a
+    # reliable test - on that filesystem the open() call itself succeeds
+    # and only an actual write fails, so this now writes and flushes real
+    # bytes to a disposable file in the same directory instead of trusting
+    # a plain open/close.
     try:
-        if path.exists():
-            with open(path, "r+b"):
-                pass
-        else:
-            path.parent.mkdir(parents=True, exist_ok=True)
-            probe = path.parent / ".write_test"
-            with open(probe, "wb"):
-                pass
-            probe.unlink()
+        path.parent.mkdir(parents=True, exist_ok=True)
+        probe = path.parent / f".write_test_{os.getpid()}"
+        with open(probe, "wb") as f:
+            f.write(b"x")
+            f.flush()
+            os.fsync(f.fileno())
+        probe.unlink()
         return True
     except OSError:
         return False
  
  
-def _writable_sqlite_path(path: Path) -> Path:
-    if _is_writable(path):
-        return path
-    # fall back to a copy of the seed db somewhere that's actually
-    # writable, so CRUD still works for the life of the session - it
-    # just means edits don't survive a reboot/redeploy, same as any
-    # other file written at runtime on streamlit cloud's free tier.
+def _fallback_sqlite_path(path: Path) -> Path:
+    # a copy of the seed db somewhere that's actually writable, so CRUD
+    # still works for the life of the session - edits just don't survive
+    # a reboot/redeploy, same as any other file written at runtime on
+    # streamlit cloud's free tier.
     fallback = Path(tempfile.gettempdir()) / "cricbuzz_livestats" / path.name
     fallback.parent.mkdir(parents=True, exist_ok=True)
     if path.exists() and not fallback.exists():
         shutil.copy(path, fallback)
+    return fallback
+ 
+ 
+# once we've confirmed (by probe or by an actual failed write) that the
+# configured sqlite path isn't writable, remember the fallback here so
+# every later call - in this run of the app - goes straight to it instead
+# of re-probing or failing once more first.
+_forced_sqlite_path = {"path": None}
+ 
+ 
+def _writable_sqlite_path(path: Path) -> Path:
+    if _forced_sqlite_path["path"] is not None:
+        return _forced_sqlite_path["path"]
+    if _is_writable(path):
+        return path
+    fallback = _fallback_sqlite_path(path)
+    _forced_sqlite_path["path"] = fallback
     return fallback
  
  
@@ -114,9 +130,24 @@ def run_query(sql, params=None):
 def run_action(sql, params=None):
     # for INSERT / UPDATE / DELETE, commits automatically
     eng = get_engine()
-    with eng.begin() as conn:
-        result = conn.execute(text(sql), params or {})
-        return result.rowcount
+    try:
+        with eng.begin() as conn:
+            result = conn.execute(text(sql), params or {})
+            return result.rowcount
+    except OperationalError as e:
+        if "readonly database" not in str(e).lower() or current_engine_name() != "sqlite":
+            raise
+        # the pre-flight probe said this path was writable but the real
+        # write just proved it wrong anyway - switch to the writable
+        # fallback copy right now and retry once before giving up, rather
+        # than making the person hit "add" a second time themselves.
+        path = Path(_setting("DB_PATH", str(DEFAULT_DB_PATH)))
+        _forced_sqlite_path["path"] = _fallback_sqlite_path(path)
+        get_engine.clear()
+        eng = get_engine()
+        with eng.begin() as conn:
+            result = conn.execute(text(sql), params or {})
+            return result.rowcount
  
  
 def db_ready():
