@@ -15,8 +15,38 @@ STAT_TYPES = {
     "mostRuns": "Most Runs",
     "mostWickets": "Most Wickets",
     "highestScore": "Highest Score",
-    "bestBowling": "Best Bowling Figures",
     "mostSixes": "Most Sixes",
+}
+# "bestBowling" used to be in here too, but cricbuzz's api rejects that
+# statsType value with a 400 (bad request) - whatever the real enum value
+# is, it isn't that. rather than guess again and risk another silent
+# mismatch, dropped the category. RapidAPI's own playground for this
+# endpoint lists the accepted statsType values under a dropdown - if we
+# find the right one there it's a one-line add back to this dict.
+ 
+# cricbuzz's headers come back as short abbreviations (M, I, R, SR...) -
+# real column names, just not spelled out. this expands the common ones
+# to something readable; anything not in here (like "Batter") is already
+# a real word and passes through untouched.
+HEADER_EXPANSIONS = {
+    "m": "Matches",
+    "i": "Innings",
+    "r": "Runs",
+    "w": "Wickets",
+    "wkts": "Wickets",
+    "sr": "Strike Rate",
+    "econ": "Economy",
+    "avg": "Average",
+    "hs": "Highest Score",
+    "bf": "Balls Faced",
+    "o": "Overs",
+    "no": "Not Outs",
+    "4s": "Fours",
+    "6s": "Sixes",
+    "100s": "Hundreds",
+    "50s": "Fifties",
+    "bbi": "Best Bowling (Innings)",
+    "bbm": "Best Bowling (Match)",
 }
  
  
@@ -40,6 +70,7 @@ def _label_columns(headers, n_cols):
             h = ""
         if not h:
             h = "Rank" if i == 0 else f"Stat {i + 1}"
+        h = HEADER_EXPANSIONS.get(h.lower(), h)
         cleaned.append(h)
  
     # guard against duplicate labels (pandas is picky about that) - e.g.
