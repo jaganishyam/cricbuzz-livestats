@@ -1,10 +1,11 @@
 [theme]
+# only base + primaryColor set here on purpose - once every color field
+# is filled in, streamlit treats the theme as fully locked and hides the
+# System/Light/Dark picker from the viewer's menu. leaving the rest out
+# keeps that picker available; app.py's own CSS still paints the dark,
+# card-based look on top of whichever base streamlit is using.
 base = "dark"
 primaryColor = "#22C55E"
-backgroundColor = "#0B0F14"
-secondaryBackgroundColor = "#141A23"
-textColor = "#E5E7EB"
-font = "sans serif"
 
 [browser]
 gatherUsageStats = false
